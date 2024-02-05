@@ -40,9 +40,10 @@ class CacheControl
      * @param $name
      * @param $value
      * @param int $expires_in
+     * @param bool $serialize
      * @return bool
      */
-    public function set($name, $value, int $expires_in = 300): bool
+    public function set($name, $value, int $expires_in = 300, bool $serialize = true): bool
     {
         try {
 
@@ -52,13 +53,17 @@ class CacheControl
 
             $archive = $this->getPath($name);
 
-            $data = array(
-                "created_at" => $this->currentTime(),
-                "expires_in" => $this->currentTime($expires_in),
-                "content" => $value
-            );
+            if ($serialize) {
 
-            $data = $this->serialize($data);
+                $data = $this->serialize([
+                    "created_at" => $this->currentTime(),
+                    "expires_in" => $this->currentTime($expires_in),
+                    "content" => $value
+                ]);
+
+            } else {
+                $data = $value;
+            }
 
             if (file_put_contents($archive, $data) === false) {
                 throw new Exception("Error creating cache cache");
@@ -73,22 +78,34 @@ class CacheControl
 
     /**
      * @param $name
-     * @param callable|null $function
+     * @param callable|null $callable
      * @param int $expires_in
-     * @return null
+     * @param bool $serialize
+     * @return mixed
      */
-    public function get($name, ?callable $function = null, int $expires_in = 10)
+    public function has($name, ?callable $callable, int $expires_in, bool $serialize = true): mixed
+    {
+        $getCache = $this->get($name);
+        if (!is_null($getCache)) {
+            return $getCache;
+        }
+
+        $data = $callable();
+        $this->set($name, $data, $expires_in, $serialize);
+        return $data;
+    }
+
+
+    /**
+     * @param $name
+     * @return mixed|null
+     */
+    public function get($name): mixed
     {
         try {
             $cacheFile = $this->getPath($name);
             if (!file_exists($cacheFile)) {
-                if (!is_null($function) && is_callable($function)) {
-                    $data = $function();
-                    $this->set($name, $data, $expires_in);
-                    return $data;
-                } else {
-                    throw new Exception("The file does not exist");
-                }
+                throw new Exception("The file does not exist");
             }
 
             $fileContent = file_get_contents($cacheFile);
@@ -96,24 +113,14 @@ class CacheControl
                 throw new Exception("Error reading the file");
             }
 
-            $data = unserialize($fileContent);
+            $data = $this->unSerialize($fileContent);
 
             if (isset($data->expires_in) && $data->expires_in <= $this->currentTime()) {
                 unlink($cacheFile);
-                if (!is_null($function) && is_callable($function)) {
-                    $data = $function();
-                    $this->set($name, $data, $expires_in);
-                    return $data;
-                } else {
-                    throw new Exception("The cache has already expired");
-                }
+                throw new Exception("The cache has already expired");
             }
 
-            if (empty($data->content)) {
-                throw new Exception("The cache file is invalid");
-            }
-
-            return $data->content;
+            return ($data->content ?? $data);
 
         } catch (Exception $exception) {
             return null;
@@ -163,5 +170,18 @@ class CacheControl
             $dateTime->modify("+{$update} minutes");
         }
         return $dateTime->format("Y-m-d H:i:s");
+    }
+
+    /**
+     * @param $content
+     * @return mixed
+     */
+    private function unSerialize($content): mixed
+    {
+        $unSerialized = @unserialize($content);
+        if ($unSerialized !== false) {
+            return $unSerialized;
+        }
+        return $content;
     }
 }

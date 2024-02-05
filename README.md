@@ -38,7 +38,7 @@ $cache->set("profile=john", [
  * Checks if the cache exists, if it exists, return the cache, if it doesn't exist, create it using the function
  */
 
-$withCallable = $cache->get("data", function () {
+$withCallable = $cache->has("data", function () {
     return array(
         array("name" => "John Walker", "age" => 37),
         array("name" => "John Samuel", "age" => 17)
