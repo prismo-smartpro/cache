@@ -8,10 +8,16 @@ use Exception;
 
 class CacheControl
 {
+
+    const JSON = "json";
+    const SERIALIZE = "serialize";
+    const DOCUMENT = "document";
+
     /*** @var string|null */
     protected ?string $path = null;
     /*** @var string|mixed|null */
     protected ?string $extension = null;
+    protected ?string $type = "serialize";
 
     /**
      * @param $path
@@ -40,10 +46,9 @@ class CacheControl
      * @param $name
      * @param $value
      * @param int $expires_in
-     * @param bool $serialize
      * @return bool
      */
-    public function set($name, $value, int $expires_in = 300, bool $serialize = true): bool
+    public function set($name, $value, int $expires_in = 300): bool
     {
         try {
 
@@ -53,14 +58,14 @@ class CacheControl
 
             $archive = $this->getPath($name);
 
-            if ($serialize) {
-
+            if ($this->type === "serialize") {
                 $data = $this->serialize([
                     "created_at" => $this->currentTime(),
                     "expires_in" => $this->currentTime($expires_in),
                     "content" => $value
                 ]);
-
+            } elseif ($this->type === "json") {
+                $data = json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
             } else {
                 $data = $value;
             }
@@ -80,18 +85,17 @@ class CacheControl
      * @param $name
      * @param callable|null $callable
      * @param int $expires_in
-     * @param bool $serialize
      * @return mixed
      */
-    public function has($name, ?callable $callable, int $expires_in, bool $serialize = true): mixed
+    public function has($name, ?callable $callable, int $expires_in = 30): mixed
     {
         $getCache = $this->get($name);
-        if (!is_null($getCache)) {
+        if ($getCache !== null) {
             return $getCache;
         }
 
         $data = $callable();
-        $this->set($name, $data, $expires_in, $serialize);
+        $this->set($name, $data, $expires_in);
         return $data;
     }
 
@@ -113,7 +117,17 @@ class CacheControl
                 throw new Exception("Error reading the file");
             }
 
-            $data = $this->unSerialize($fileContent);
+            if ($this->type === "json") {
+                $data = json_decode($fileContent);
+            } elseif ($this->type === "serialize") {
+                @$data = unserialize($fileContent);
+            } else {
+                $data = $fileContent;
+            }
+
+            if ($this->type === "serialize" and $data === false) {
+                throw new Exception("The cache type is not valid");
+            }
 
             if (isset($data->expires_in) && $data->expires_in <= $this->currentTime()) {
                 unlink($cacheFile);
@@ -160,10 +174,10 @@ class CacheControl
     }
 
     /**
-     * @param $update
+     * @param int|null $update
      * @return string
      */
-    private function currentTime($update = null): string
+    private function currentTime(?int $update = null): string
     {
         $dateTime = new DateTime();
         if ($update) {
@@ -183,5 +197,13 @@ class CacheControl
             return $unSerialized;
         }
         return $content;
+    }
+
+    /**
+     * @param string|null $type
+     */
+    public function setType(?string $type): void
+    {
+        $this->type = $type;
     }
 }

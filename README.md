@@ -22,6 +22,7 @@ use SmartPRO\Technology\CacheControl;
  * Cache file extension
  */
 $cache = new CacheControl(__DIR__ . "/cache", "cache");
+$cache->setType(CacheControl::SERIALIZE);
 
 /*
  * Creating a new cache
